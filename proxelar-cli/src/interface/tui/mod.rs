@@ -137,5 +137,11 @@ async fn open_in_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, s
     let _ = execute!(io::stdout(), EnterAlternateScreen);
     let _ = terminal.clear();
 
+    // Drain any input events buffered while the editor was running so they
+    // are not misinterpreted as proxelar key bindings.
+    while crossterm::event::poll(std::time::Duration::ZERO).unwrap_or(false) {
+        let _ = crossterm::event::read();
+    }
+
     let _ = std::fs::remove_file(&temp_path);
 }

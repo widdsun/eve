@@ -150,6 +150,8 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
         format!(
             " q:quit  /:filter  j/k:nav  Enter:details  Tab:req/res  c:clear | Filter: {filter} "
         )
+    } else if state.detail_open {
+        " q:quit  j/k:nav  Tab:req/res  PgDn/PgUp:scroll  ^D/^U:scroll  Esc:close  c:clear ".into()
     } else {
         " q:quit  /:filter  j/k:nav  Enter:details  Tab:req/res  g/G:top/bottom  c:clear ".into()
     };
@@ -248,6 +250,7 @@ fn draw_detail(f: &mut Frame, state: &AppState, area: Rect, filtered: &[(usize, 
 
                 let detail = Paragraph::new(content)
                     .block(Block::default().borders(Borders::ALL).title(tab_title))
+                    .scroll((state.detail_scroll, 0))
                     .wrap(Wrap { trim: false });
 
                 f.render_widget(detail, area);

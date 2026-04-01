@@ -40,6 +40,14 @@ pub fn handle_key_event(key: KeyEvent, state: &mut AppState) -> bool {
         KeyCode::Char('G') => state.select_last(),
         KeyCode::Enter => state.toggle_detail(),
         KeyCode::Tab => state.toggle_tab(),
+        KeyCode::PageDown => state.scroll_detail_down(5),
+        KeyCode::PageUp => state.scroll_detail_up(5),
+        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            state.scroll_detail_down(5)
+        }
+        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            state.scroll_detail_up(5)
+        }
         KeyCode::Char('/') => {
             state.filter_mode = true;
             state.filter_input.clear();

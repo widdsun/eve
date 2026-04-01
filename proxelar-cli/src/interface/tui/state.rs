@@ -17,6 +17,7 @@ pub struct AppState {
     pub table_state: TableState,
     pub detail_open: bool,
     pub detail_tab: DetailTab,
+    pub detail_scroll: u16,
     pub filter: Option<String>,
     pub filter_input: String,
     pub filter_mode: bool,
@@ -46,6 +47,7 @@ impl AppState {
             table_state: TableState::default(),
             detail_open: false,
             detail_tab: DetailTab::Request,
+            detail_scroll: 0,
             filter: None,
             filter_input: String::new(),
             filter_mode: false,
@@ -80,6 +82,7 @@ impl AppState {
             .selected()
             .map_or(0, |i| (i + 1).min(len - 1));
         self.table_state.select(Some(i));
+        self.detail_scroll = 0;
     }
 
     pub fn select_prev(&mut self) {
@@ -88,11 +91,13 @@ impl AppState {
             .selected()
             .map_or(0, |i| i.saturating_sub(1));
         self.table_state.select(Some(i));
+        self.detail_scroll = 0;
     }
 
     pub fn select_first(&mut self) {
         if self.filtered_count() > 0 {
             self.table_state.select(Some(0));
+            self.detail_scroll = 0;
         }
     }
 
@@ -100,11 +105,13 @@ impl AppState {
         let len = self.filtered_count();
         if len > 0 {
             self.table_state.select(Some(len - 1));
+            self.detail_scroll = 0;
         }
     }
 
     pub fn toggle_detail(&mut self) {
         self.detail_open = !self.detail_open;
+        self.detail_scroll = 0;
     }
 
     pub fn toggle_tab(&mut self) {
@@ -112,11 +119,21 @@ impl AppState {
             DetailTab::Request => DetailTab::Response,
             DetailTab::Response => DetailTab::Request,
         };
+        self.detail_scroll = 0;
+    }
+
+    pub fn scroll_detail_down(&mut self, step: u16) {
+        self.detail_scroll = self.detail_scroll.saturating_add(step);
+    }
+
+    pub fn scroll_detail_up(&mut self, step: u16) {
+        self.detail_scroll = self.detail_scroll.saturating_sub(step);
     }
 
     pub fn clear(&mut self) {
         self.requests.clear();
         self.table_state.select(None);
         self.detail_open = false;
+        self.detail_scroll = 0;
     }
 }

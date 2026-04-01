@@ -86,15 +86,9 @@ async fn run_inner(
 async fn open_in_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, state: &AppState) {
     use proxyapi::ProxyEvent;
 
-    let body = match state.selected_event() {
-        Some(ProxyEvent::RequestComplete { response, .. }) => response.body().to_owned(),
-        _ => return,
-    };
-
-    let ext = state
-        .selected_event()
-        .and_then(|e| match e {
-            ProxyEvent::RequestComplete { response, .. } => response
+    let (id, body, ext) = match state.selected_event() {
+        Some(ProxyEvent::RequestComplete { id, response, .. }) => {
+            let ext = response
                 .headers()
                 .get("content-type")
                 .and_then(|v| v.to_str().ok())
@@ -108,12 +102,14 @@ async fn open_in_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, s
                     } else {
                         "txt"
                     }
-                }),
-            _ => None,
-        })
-        .unwrap_or("txt");
+                })
+                .unwrap_or("txt");
+            (*id, response.body().to_owned(), ext)
+        }
+        _ => return,
+    };
 
-    let temp_path = std::env::temp_dir().join(format!("proxelar-response.{ext}"));
+    let temp_path = std::env::temp_dir().join(format!("proxelar-response-{id}.{ext}"));
 
     if let Err(e) = std::fs::File::create(&temp_path).and_then(|mut f| f.write_all(&body)) {
         tracing::warn!("failed to write temp file for editor: {e}");

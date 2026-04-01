@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use super::state::AppState;
+use super::state::{AppState, PendingAction};
 
 /// Handle a key event. Returns true if the app should quit.
 pub fn handle_key_event(key: KeyEvent, state: &mut AppState) -> bool {
@@ -47,6 +47,11 @@ pub fn handle_key_event(key: KeyEvent, state: &mut AppState) -> bool {
         }
         KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.scroll_detail_up(5)
+        }
+        KeyCode::Char('e') => {
+            if state.detail_open {
+                state.pending_action = Some(PendingAction::OpenEditor);
+            }
         }
         KeyCode::Char('/') => {
             state.filter_mode = true;

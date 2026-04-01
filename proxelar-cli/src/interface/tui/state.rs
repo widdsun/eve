@@ -12,12 +12,18 @@ pub enum DetailTab {
     Response,
 }
 
+#[derive(Debug)]
+pub enum PendingAction {
+    OpenEditor,
+}
+
 pub struct AppState {
     pub(crate) requests: VecDeque<ProxyEvent>,
     pub table_state: TableState,
     pub detail_open: bool,
     pub detail_tab: DetailTab,
     pub detail_scroll: u16,
+    pub pending_action: Option<PendingAction>,
     pub filter: Option<String>,
     pub filter_input: String,
     pub filter_mode: bool,
@@ -48,6 +54,7 @@ impl AppState {
             detail_open: false,
             detail_tab: DetailTab::Request,
             detail_scroll: 0,
+            pending_action: None,
             filter: None,
             filter_input: String::new(),
             filter_mode: false,
@@ -128,6 +135,16 @@ impl AppState {
 
     pub fn scroll_detail_up(&mut self, step: u16) {
         self.detail_scroll = self.detail_scroll.saturating_sub(step);
+    }
+
+    /// Returns a reference to the currently selected event (respecting the active filter).
+    pub fn selected_event(&self) -> Option<&ProxyEvent> {
+        let filter = self.filter.as_deref();
+        let selected = self.table_state.selected()?;
+        self.requests
+            .iter()
+            .filter(|e| matches_filter(e, filter))
+            .nth(selected)
     }
 
     pub fn clear(&mut self) {

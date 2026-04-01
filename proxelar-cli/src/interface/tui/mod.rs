@@ -3,19 +3,20 @@ mod handler;
 mod state;
 mod ui;
 
+use std::io::{self, Write};
+
 use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use proxyapi::ProxyEvent;
 use ratatui::prelude::*;
-use std::io;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use event::{spawn_event_loop, AppEvent};
 use handler::handle_key_event;
-use state::AppState;
+use state::{AppState, PendingAction};
 use ui::draw;
 
 /// Guard that restores the terminal on drop, even during panics.
@@ -64,6 +65,9 @@ async fn run_inner(
                 if handle_key_event(key_event, &mut state) {
                     break;
                 }
+                if let Some(PendingAction::OpenEditor) = state.pending_action.take() {
+                    open_in_editor(&mut terminal, &state).await;
+                }
             }
             AppEvent::Proxy(proxy_event) => {
                 state.add_event(proxy_event);
@@ -76,4 +80,62 @@ async fn run_inner(
 
     // RawModeGuard handles cleanup on drop
     Ok(())
+}
+
+/// Suspend the TUI, open the selected response body in `$EDITOR`, then restore the TUI.
+async fn open_in_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, state: &AppState) {
+    use proxyapi::ProxyEvent;
+
+    let body = match state.selected_event() {
+        Some(ProxyEvent::RequestComplete { response, .. }) => response.body().to_owned(),
+        _ => return,
+    };
+
+    let ext = state
+        .selected_event()
+        .and_then(|e| match e {
+            ProxyEvent::RequestComplete { response, .. } => response
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .map(|ct| {
+                    if ct.contains("json") {
+                        "json"
+                    } else if ct.contains("html") {
+                        "html"
+                    } else if ct.contains("xml") {
+                        "xml"
+                    } else {
+                        "txt"
+                    }
+                }),
+            _ => None,
+        })
+        .unwrap_or("txt");
+
+    let temp_path = std::env::temp_dir().join(format!("proxelar-response.{ext}"));
+
+    if let Err(e) = std::fs::File::create(&temp_path).and_then(|mut f| f.write_all(&body)) {
+        tracing::warn!("failed to write temp file for editor: {e}");
+        return;
+    }
+
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".into());
+
+    // Suspend TUI
+    let _ = disable_raw_mode();
+    let _ = execute!(io::stdout(), LeaveAlternateScreen);
+
+    let path = temp_path.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        let _ = std::process::Command::new(&editor).arg(&path).status();
+    })
+    .await;
+
+    // Restore TUI
+    let _ = enable_raw_mode();
+    let _ = execute!(io::stdout(), EnterAlternateScreen);
+    let _ = terminal.clear();
+
+    let _ = std::fs::remove_file(&temp_path);
 }

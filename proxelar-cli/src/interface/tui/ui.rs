@@ -151,7 +151,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
             " q:quit  /:filter  j/k:nav  Enter:details  Tab:req/res  c:clear | Filter: {filter} "
         )
     } else if state.detail_open {
-        " q:quit  j/k:nav  Tab:req/res  PgDn/PgUp:scroll  ^D/^U:scroll  e:editor  Esc:close  c:clear ".into()
+        " q:quit  j/k:nav  Tab:req/res  ^D/^U:scroll  e:editor  Esc:close  c:clear ".into()
     } else {
         " q:quit  /:filter  j/k:nav  Enter:details  Tab:req/res  g/G:top/bottom  c:clear ".into()
     };

@@ -67,6 +67,13 @@ async fn run_inner(
                 }
                 if let Some(PendingAction::OpenEditor) = state.pending_action.take() {
                     open_in_editor(&mut terminal, &state).await;
+                    // Drain stale input events that EventStream buffered
+                    // while the editor was running. Keep proxy events.
+                    while let Ok(evt) = app_events.try_recv() {
+                        if let AppEvent::Proxy(proxy_event) = evt {
+                            state.add_event(proxy_event);
+                        }
+                    }
                 }
             }
             AppEvent::Proxy(proxy_event) => {

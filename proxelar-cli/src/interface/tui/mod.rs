@@ -4,6 +4,8 @@ mod state;
 mod ui;
 
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use crossterm::{
     execute,
@@ -49,7 +51,8 @@ async fn run_inner(
     let mut terminal = Terminal::new(backend)?;
 
     let mut state = AppState::new();
-    let mut app_events = spawn_event_loop(event_rx);
+    let editor_active = Arc::new(AtomicBool::new(false));
+    let mut app_events = spawn_event_loop(event_rx, Arc::clone(&editor_active));
 
     loop {
         let event = tokio::select! {
@@ -66,7 +69,7 @@ async fn run_inner(
                     break;
                 }
                 if let Some(PendingAction::OpenEditor) = state.pending_action.take() {
-                    open_in_editor(&mut terminal, &state).await;
+                    open_in_editor(&mut terminal, &state, &editor_active).await;
                     // Drain stale input events that EventStream buffered
                     // while the editor was running. Keep proxy events.
                     while let Ok(evt) = app_events.try_recv() {
@@ -90,7 +93,11 @@ async fn run_inner(
 }
 
 /// Suspend the TUI, open the selected request/response body in `$EDITOR`, then restore the TUI.
-async fn open_in_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, state: &AppState) {
+async fn open_in_editor(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    state: &AppState,
+    editor_active: &AtomicBool,
+) {
     use proxyapi::ProxyEvent;
     use state::DetailTab;
 
@@ -133,6 +140,9 @@ async fn open_in_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, s
 
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".into());
 
+    // Tell the event loop to stop reading stdin so the editor has exclusive access.
+    editor_active.store(true, Ordering::Relaxed);
+
     // Suspend TUI
     let _ = disable_raw_mode();
     let _ = execute!(io::stdout(), LeaveAlternateScreen);
@@ -147,6 +157,9 @@ async fn open_in_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, s
     let _ = enable_raw_mode();
     let _ = execute!(io::stdout(), EnterAlternateScreen);
     let _ = terminal.clear();
+
+    // Resume event loop reading.
+    editor_active.store(false, Ordering::Relaxed);
 
     // Drain any input events buffered while the editor was running so they
     // are not misinterpreted as proxelar key bindings.

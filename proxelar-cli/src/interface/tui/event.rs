@@ -1,3 +1,6 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use crossterm::event::{Event, EventStream, KeyEvent};
 use futures::StreamExt;
 use proxyapi::ProxyEvent;
@@ -11,8 +14,12 @@ pub enum AppEvent {
 }
 
 /// Merge terminal input, proxy events, and render ticks into a single stream.
+///
+/// While `editor_active` is true, crossterm input reading and render ticks
+/// are paused so an external editor can use stdin without contention.
 pub fn spawn_event_loop(
     mut proxy_rx: mpsc::Receiver<ProxyEvent>,
+    editor_active: Arc<AtomicBool>,
 ) -> mpsc::UnboundedReceiver<AppEvent> {
     let (tx, rx) = mpsc::unbounded_channel();
 
@@ -21,6 +28,19 @@ pub fn spawn_event_loop(
         let mut render_interval = tokio::time::interval(tokio::time::Duration::from_millis(50));
 
         loop {
+            // While an editor owns the terminal, only forward proxy events.
+            if editor_active.load(Ordering::Relaxed) {
+                tokio::select! {
+                    Some(proxy_evt) = proxy_rx.recv() => {
+                        if tx.send(AppEvent::Proxy(proxy_evt)).is_err() {
+                            break;
+                        }
+                    }
+                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {}
+                }
+                continue;
+            }
+
             let crossterm_event = reader.next();
             tokio::pin!(crossterm_event);
 

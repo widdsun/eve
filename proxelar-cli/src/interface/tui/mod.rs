@@ -82,14 +82,22 @@ async fn run_inner(
     Ok(())
 }
 
-/// Suspend the TUI, open the selected response body in `$EDITOR`, then restore the TUI.
+/// Suspend the TUI, open the selected request/response body in `$EDITOR`, then restore the TUI.
 async fn open_in_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, state: &AppState) {
     use proxyapi::ProxyEvent;
+    use state::DetailTab;
 
-    let (id, body, ext) = match state.selected_event() {
-        Some(ProxyEvent::RequestComplete { id, response, .. }) => {
-            let ext = response
-                .headers()
+    let (id, body, label, ext) = match state.selected_event() {
+        Some(ProxyEvent::RequestComplete {
+            id,
+            request,
+            response,
+        }) => {
+            let (body_src, label, headers) = match state.detail_tab {
+                DetailTab::Request => (request.body(), "request", request.headers()),
+                DetailTab::Response => (response.body(), "response", response.headers()),
+            };
+            let ext = headers
                 .get("content-type")
                 .and_then(|v| v.to_str().ok())
                 .map(|ct| {
@@ -104,12 +112,12 @@ async fn open_in_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, s
                     }
                 })
                 .unwrap_or("txt");
-            (*id, response.body().to_owned(), ext)
+            (*id, body_src.to_owned(), label, ext)
         }
         _ => return,
     };
 
-    let temp_path = std::env::temp_dir().join(format!("proxelar-response-{id}.{ext}"));
+    let temp_path = std::env::temp_dir().join(format!("proxelar-{label}-{id}.{ext}"));
 
     if let Err(e) = std::fs::File::create(&temp_path).and_then(|mut f| f.write_all(&body)) {
         tracing::warn!("failed to write temp file for editor: {e}");

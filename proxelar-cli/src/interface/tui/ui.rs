@@ -169,9 +169,25 @@ fn draw_detail(f: &mut Frame, state: &AppState, area: Rect, filtered: &[(usize, 
             ProxyEvent::RequestComplete {
                 request, response, ..
             } => {
+                let active_style = Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD);
+                let inactive_style = Style::default().fg(Color::DarkGray);
                 let tab_title = match state.detail_tab {
-                    DetailTab::Request => " [Request] Response ",
-                    DetailTab::Response => " Request [Response] ",
+                    DetailTab::Request => Line::from(vec![
+                        Span::raw(" "),
+                        Span::styled("[Request]", active_style),
+                        Span::raw(" "),
+                        Span::styled("Response", inactive_style),
+                        Span::raw(" "),
+                    ]),
+                    DetailTab::Response => Line::from(vec![
+                        Span::raw(" "),
+                        Span::styled("Request", inactive_style),
+                        Span::raw(" "),
+                        Span::styled("[Response]", active_style),
+                        Span::raw(" "),
+                    ]),
                 };
 
                 let content = match state.detail_tab {

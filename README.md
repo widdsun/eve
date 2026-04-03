@@ -23,6 +23,7 @@ Intercept, inspect, and modify HTTP/HTTPS traffic with Lua scripting, a TUI, and
 - **Forward & reverse proxy** — CONNECT tunneling or upstream URI rewriting
 - **Three interfaces** — terminal, interactive TUI (ratatui), web GUI (axum + WebSocket)
 - **Request filtering** — search and inspect request/response pairs in detail
+- **Editor integration** — open any request or response body in `$EDITOR` for inspection
 - **Easy CA install** — visit `http://proxel.ar` through the proxy to download the certificate
 
 ## Installation
@@ -86,9 +87,11 @@ proxelar --script examples/scripts/block_domain.lua # run with a Lua script
 | `j` / `k` / arrows | Navigate |
 | `Enter` | Toggle detail panel |
 | `Tab` | Switch Request / Response |
+| `e` | Open request/response body in `$EDITOR` |
 | `/` | Filter |
 | `Esc` | Close panel / clear filter |
 | `g` / `G` | Top / bottom |
+| `PgUp` / `PgDn` | Scroll detail panel |
 | `c` | Clear requests |
 | `q` / `Ctrl+C` | Quit |
 

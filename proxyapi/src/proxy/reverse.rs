@@ -8,7 +8,9 @@ use hyper_util::rt::TokioIo;
 use tokio::net::TcpStream;
 
 use crate::body::{self, ProxyBody};
-use crate::handler::{collect_and_emit, collect_body, CapturingHandler};
+use crate::handler::{
+    collect_and_emit, collect_body, emit_and_stream, is_streaming_response, CapturingHandler,
+};
 use crate::{HttpContext, HttpHandler, RequestOrResponse};
 
 use super::{is_benign_shutdown_error, Client};
@@ -50,8 +52,12 @@ pub async fn handle_connection(
             match client.request(req).await {
                 Ok(res) => {
                     let (parts, body) = res.into_parts();
-                    let body_bytes = collect_body(body).await;
-                    Ok(collect_and_emit(&mut handler, parts, body_bytes))
+                    if is_streaming_response(&parts.headers) {
+                        Ok(emit_and_stream(&mut handler, parts, body))
+                    } else {
+                        let body_bytes = collect_body(body).await;
+                        Ok(collect_and_emit(&mut handler, parts, body_bytes))
+                    }
                 }
                 Err(e) => {
                     tracing::error!("Reverse proxy error: {e}");

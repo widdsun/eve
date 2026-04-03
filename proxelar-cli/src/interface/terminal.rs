@@ -58,6 +58,7 @@ pub async fn run(mut event_rx: mpsc::Receiver<ProxyEvent>, cancel: CancellationT
                     message.as_str().with(Color::Red)
                 );
             }
+            ProxyEvent::StreamingChunk { .. } => {}
         }
     }
 }

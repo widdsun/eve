@@ -1,10 +1,13 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use proxyapi::ProxyEvent;
 use ratatui::widgets::TableState;
 
 /// Maximum number of stored requests before old entries are evicted.
 const MAX_REQUESTS: usize = 10_000;
+
+/// Maximum accumulated streaming body size per event (10 MB).
+const MAX_STREAMING_BODY: usize = 10 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DetailTab {
@@ -19,6 +22,8 @@ pub enum PendingAction {
 
 pub struct AppState {
     pub(crate) requests: VecDeque<ProxyEvent>,
+    /// Accumulated streaming response body data, keyed by event ID.
+    pub(crate) streaming_bodies: HashMap<u64, Vec<u8>>,
     pub table_state: TableState,
     pub detail_open: bool,
     pub detail_tab: DetailTab,
@@ -43,6 +48,7 @@ pub(crate) fn matches_filter(event: &ProxyEvent, filter: Option<&str>) -> bool {
                 || method.to_lowercase().contains(&filter_lower)
         }
         ProxyEvent::Error { message } => message.to_lowercase().contains(&filter_lower),
+        ProxyEvent::StreamingChunk { .. } => false,
     }
 }
 
@@ -50,6 +56,7 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             requests: VecDeque::new(),
+            streaming_bodies: HashMap::new(),
             table_state: TableState::default(),
             detail_open: false,
             detail_tab: DetailTab::Request,
@@ -64,10 +71,23 @@ impl AppState {
     pub fn add_event(&mut self, event: ProxyEvent) {
         self.requests.push_back(event);
         if self.requests.len() > MAX_REQUESTS {
-            self.requests.pop_front();
+            if let Some(ProxyEvent::RequestComplete { id, .. }) = self.requests.pop_front().as_ref()
+            {
+                self.streaming_bodies.remove(id);
+            }
             if let Some(idx) = self.table_state.selected() {
                 self.table_state.select(Some(idx.saturating_sub(1)));
             }
+        }
+    }
+
+    /// Append streaming chunk data to the accumulated buffer for the given event ID.
+    pub fn append_streaming_data(&mut self, id: u64, data: &[u8]) {
+        let buf = self.streaming_bodies.entry(id).or_default();
+        let remaining = MAX_STREAMING_BODY.saturating_sub(buf.len());
+        if remaining > 0 {
+            let to_copy = data.len().min(remaining);
+            buf.extend_from_slice(&data[..to_copy]);
         }
     }
 
@@ -149,6 +169,7 @@ impl AppState {
 
     pub fn clear(&mut self) {
         self.requests.clear();
+        self.streaming_bodies.clear();
         self.table_state.select(None);
         self.detail_open = false;
         self.detail_scroll = 0;

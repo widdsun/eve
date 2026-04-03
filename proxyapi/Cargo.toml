@@ -18,7 +18,7 @@ hyper = { version = "1.8", features = ["http1", "server", "client"] }
 hyper-util = { version = "0.1", features = ["tokio", "server-auto", "client-legacy", "http1"] }
 http = "1.2"
 http-body-util = "0.1"
-bytes = "1.9"
+bytes = { version = "1.9", features = ["serde"] }
 tokio-rustls = "0.26"
 rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
 rustls-pki-types = "1.11"

@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use proxyapi_models::{ProxiedRequest, ProxiedResponse};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -17,6 +18,14 @@ pub enum ProxyEvent {
         request: Box<ProxiedRequest>,
         /// The captured response.
         response: Box<ProxiedResponse>,
+    },
+    /// A chunk of streaming response data (e.g. SSE) associated with a prior
+    /// [`RequestComplete`](ProxyEvent::RequestComplete) event.
+    StreamingChunk {
+        /// Event ID matching the original `RequestComplete`.
+        id: u64,
+        /// Raw chunk bytes received from the upstream server.
+        data: Bytes,
     },
     /// A non-fatal error occurred during proxying.
     Error {

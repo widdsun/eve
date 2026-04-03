@@ -74,14 +74,26 @@ async fn run_inner(
                     // while the editor was running. Keep proxy events.
                     while let Ok(evt) = app_events.try_recv() {
                         if let AppEvent::Proxy(proxy_event) = evt {
-                            state.add_event(proxy_event);
+                            match proxy_event {
+                                ProxyEvent::StreamingChunk { id, ref data } => {
+                                    state.append_streaming_data(id, data);
+                                }
+                                _ => {
+                                    state.add_event(proxy_event);
+                                }
+                            }
                         }
                     }
                 }
             }
-            AppEvent::Proxy(proxy_event) => {
-                state.add_event(proxy_event);
-            }
+            AppEvent::Proxy(proxy_event) => match proxy_event {
+                ProxyEvent::StreamingChunk { id, ref data } => {
+                    state.append_streaming_data(id, data);
+                }
+                _ => {
+                    state.add_event(proxy_event);
+                }
+            },
             AppEvent::Render => {
                 terminal.draw(|f| draw(f, &mut state))?;
             }
@@ -107,9 +119,16 @@ async fn open_in_editor(
             request,
             response,
         }) => {
-            let (body_src, label, headers) = match state.detail_tab {
+            let (body_src, label, headers): (&[u8], &str, _) = match state.detail_tab {
                 DetailTab::Request => (request.body(), "request", request.headers()),
-                DetailTab::Response => (response.body(), "response", response.headers()),
+                DetailTab::Response => {
+                    let body = state
+                        .streaming_bodies
+                        .get(id)
+                        .map(|v| v.as_slice())
+                        .unwrap_or(response.body());
+                    (body, "response", response.headers())
+                }
             };
             let ext = headers
                 .get("content-type")

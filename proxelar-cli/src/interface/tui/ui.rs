@@ -72,7 +72,11 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                 let uri = request.uri();
                 let host = uri.host().unwrap_or("-");
                 let path = uri.path();
-                let size = format_size(response.body().len());
+                let body_len = state
+                    .streaming_bodies
+                    .get(id)
+                    .map_or(response.body().len(), Vec::len);
+                let size = format_size(body_len);
 
                 let method_color = match method {
                     "GET" => Color::Green,
@@ -108,6 +112,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
                 Cell::from("-"),
                 Cell::from("-"),
             ]),
+            ProxyEvent::StreamingChunk { .. } => Row::new(Vec::<Cell>::new()),
         })
         .collect();
 
@@ -151,7 +156,7 @@ pub fn draw(f: &mut Frame, state: &mut AppState) {
             " q:quit  /:filter  j/k:nav  Enter:details  Tab:req/res  c:clear | Filter: {filter} "
         )
     } else if state.detail_open {
-        " q:quit  j/k:nav  Tab:req/res  ^D/^U:scroll  e:editor  Esc:close  c:clear ".into()
+        " q:quit  j/k:nav  Tab:req/res  ^D/^U:scroll  e:editor  c:clear ".into()
     } else {
         " q:quit  /:filter  j/k:nav  Enter:details  Tab:req/res  g/G:top/bottom  c:clear ".into()
     };
@@ -167,7 +172,9 @@ fn draw_detail(f: &mut Frame, state: &AppState, area: Rect, filtered: &[(usize, 
     if let Some((_, event)) = filtered.get(selected) {
         match event {
             ProxyEvent::RequestComplete {
-                request, response, ..
+                id,
+                request,
+                response,
             } => {
                 let active_style = Style::default()
                     .fg(Color::Green)
@@ -255,9 +262,15 @@ fn draw_detail(f: &mut Frame, state: &AppState, area: Rect, filtered: &[(usize, 
                             ]));
                         }
 
-                        if !response.body().is_empty() {
+                        let body_bytes = state
+                            .streaming_bodies
+                            .get(id)
+                            .map(|v| v.as_slice())
+                            .unwrap_or(response.body());
+
+                        if !body_bytes.is_empty() {
                             lines.push(Line::from(""));
-                            lines.push(Line::from(String::from_utf8_lossy(response.body())));
+                            lines.push(Line::from(String::from_utf8_lossy(body_bytes)));
                         }
 
                         lines
@@ -277,6 +290,7 @@ fn draw_detail(f: &mut Frame, state: &AppState, area: Rect, filtered: &[(usize, 
                     .wrap(Wrap { trim: false });
                 f.render_widget(detail, area);
             }
+            ProxyEvent::StreamingChunk { .. } => {}
         }
     }
 }

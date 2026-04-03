@@ -86,6 +86,67 @@ pub fn collect_and_emit(
     Response::from_parts(parts, body::full(body_bytes))
 }
 
+/// Check if response headers indicate a streaming content type that should
+/// be forwarded without buffering (e.g. SSE, NDJSON streaming).
+pub fn is_streaming_response(headers: &http::HeaderMap) -> bool {
+    headers
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| {
+            let ct = ct.to_ascii_lowercase();
+            ct.starts_with("text/event-stream")
+                || ct.starts_with("application/x-ndjson")
+                || ct.starts_with("application/stream+json")
+        })
+}
+
+/// Emit a [`ProxyEvent`] with an empty body and return the response with a
+/// tee'd streaming body. Each frame is forwarded to the client in real-time
+/// while a [`ProxyEvent::StreamingChunk`] is emitted for UI capture.
+///
+/// The Lua `on_response` hook is intentionally skipped here — streaming bodies
+/// are potentially infinite and cannot be buffered for script modification.
+pub fn emit_and_stream(
+    handler: &mut CapturingHandler,
+    parts: http::response::Parts,
+    body: hyper::body::Incoming,
+) -> Response<ProxyBody> {
+    let id = next_id();
+    let event_tx = handler.event_tx.clone();
+
+    let proxied_response = ProxiedResponse::new(
+        parts.status,
+        parts.version,
+        parts.headers.clone(),
+        Bytes::new(),
+        now_millis(),
+    );
+
+    if let Some(request) = handler.take_captured_request() {
+        let event = ProxyEvent::RequestComplete {
+            id,
+            request: Box::new(request),
+            response: Box::new(proxied_response),
+        };
+        handler.send_event(event);
+    }
+
+    // Tee: forward each frame to the client while sending a copy to the event
+    // channel so the TUI / web GUI can display streaming data in real-time.
+    let tee_body = body.map_frame(move |frame| {
+        if let Some(data) = frame.data_ref() {
+            let chunk = ProxyEvent::StreamingChunk {
+                id,
+                data: data.clone(),
+            };
+            let _ = event_tx.try_send(chunk);
+        }
+        frame
+    });
+
+    Response::from_parts(parts, tee_body.boxed())
+}
+
 /// Collect response body bytes up to [`MAX_BODY_SIZE`], logging a warning on failure.
 pub async fn collect_body(body: hyper::body::Incoming) -> Bytes {
     Limited::new(body, MAX_BODY_SIZE)
